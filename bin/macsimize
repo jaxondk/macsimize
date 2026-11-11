@@ -17,7 +17,14 @@
 # shellcheck disable=SC2034
 set -euo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve through symlinks so `macsimize` works when linked onto PATH.
+SELF_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SELF_SOURCE" ]; do
+  SELF_LINK_DIR="$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)"
+  SELF_SOURCE="$(readlink "$SELF_SOURCE")"
+  [[ $SELF_SOURCE != /* ]] && SELF_SOURCE="$SELF_LINK_DIR/$SELF_SOURCE"
+done
+SELF_DIR="$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)"
 # shellcheck source=../lib/common.sh
 source "$SELF_DIR/../lib/common.sh"
 # shellcheck source=../lib/power.sh

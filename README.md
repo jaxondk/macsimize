@@ -8,12 +8,20 @@ What you run the server *for* is up to you — see [Suggested setup](#suggested-
 
 ## Quick start
 
+Install the `macsimize` command, then run setup:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jaxondk/macsimize/main/install.sh | bash
+macsimize setup            # installs + configures everything, asks a few preference questions
+macsimize setup --dry-run  # or: see exactly what it would do, change nothing
+macsimize setup --yes      # or: take the recommended default for every prompt
+```
+
+The installer only puts the `macsimize` command on your PATH (into `~/.local/share/macsimize`, linked from `~/.local/bin`) — it changes no power or network settings. All of `macsimize setup`'s work happens later, when you run it and approve each step. Prefer to read before you pipe? Clone instead:
+
 ```sh
 git clone https://github.com/jaxondk/macsimize ~/src/macsimize
-cd ~/src/macsimize
-bin/macsimize setup            # installs + configures everything, asks a few preference questions
-bin/macsimize setup --dry-run  # or: see exactly what it would do, change nothing
-bin/macsimize setup --yes      # or: take the recommended default for every prompt
+~/src/macsimize/bin/macsimize setup
 ```
 
 `macsimize setup` is turnkey: it installs and configures **Tailscale** (private address + SSH), installs **mosh** (resilient mobile sessions), enables **Remote Login**, asks about a couple of reboot-related preferences (below), flips the machine into server mode, and optionally installs a boot agent that re-asserts that mode after every reboot. Anything it can't do for you (a browser login, one GUI approval, a sudo grant) it prints at the end as a numbered checklist.
