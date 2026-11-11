@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# macsimize installer — fetch the tool and put `macsimize` on your PATH.
+# macsimize installer — fetch a released version and put `macsimize` on PATH.
 #
 # One-liner:
 #   curl -fsSL https://raw.githubusercontent.com/jaxondk/macsimize/main/install.sh | bash
 #
 # What it does (and nothing else — it changes no power/network settings):
-#   1. downloads macsimize into a stable directory
-#   2. symlinks the `macsimize` entrypoint into a bin dir on your PATH
-#   3. tells you to run `macsimize setup` when you're ready
+#   1. downloads a pinned macsimize release tarball (default: latest release)
+#   2. unpacks it into a stable directory
+#   3. symlinks the `macsimize` entrypoint into a bin dir on your PATH
+#   4. tells you to run `macsimize setup` when you're ready
 #
-# Everything is overridable by environment variable:
-#   MACSIMIZE_PREFIX   where the tree lives   (default: ~/.local/share/macsimize)
-#   MACSIMIZE_BIN      where the link goes    (default: ~/.local/bin)
-#   MACSIMIZE_REF      git branch/tag to use  (default: main)
-#   MACSIMIZE_REPO     source repo            (default: jaxondk/macsimize)
+# Overridable by environment variable:
+#   MACSIMIZE_VERSION  release tag to install  (default: latest release, e.g. v0.1.0)
+#   MACSIMIZE_PREFIX   where the tree lives     (default: ~/.local/share/macsimize)
+#   MACSIMIZE_BIN      where the link goes       (default: ~/.local/bin)
+#   MACSIMIZE_REPO     source repo               (default: jaxondk/macsimize)
 set -euo pipefail
 
 REPO="${MACSIMIZE_REPO:-jaxondk/macsimize}"
-REF="${MACSIMIZE_REF:-main}"
 PREFIX="${MACSIMIZE_PREFIX:-$HOME/.local/share/macsimize}"
 BIN_DIR="${MACSIMIZE_BIN:-$HOME/.local/bin}"
 
@@ -34,51 +34,34 @@ say "${B}macsimize installer${X}"
 # --- sanity checks -----------------------------------------------------------
 [ "$(uname -s)" = "Darwin" ] || die "macsimize is macOS-only (this is $(uname -s))."
 command -v curl >/dev/null 2>&1 || die "curl is required but not found."
+command -v tar  >/dev/null 2>&1 || die "tar is required but not found."
 
-# --- fetch -------------------------------------------------------------------
-# Prefer git (gives you `git pull` updates + a clean PR workflow). Fall back to
-# a tarball so a bare Mac without the Xcode CLT still works.
-fetch_git() {
-  if [ -d "$PREFIX/.git" ]; then
-    say "Updating existing checkout in $PREFIX …"
-    git -C "$PREFIX" fetch --quiet origin "$REF"
-    git -C "$PREFIX" checkout --quiet "$REF"
-    git -C "$PREFIX" reset --hard --quiet "origin/$REF" 2>/dev/null \
-      || git -C "$PREFIX" reset --hard --quiet "$REF"
-  else
-    say "Cloning $REPO ($REF) into $PREFIX …"
-    rm -rf "$PREFIX"
-    mkdir -p "$(dirname "$PREFIX")"
-    git clone --quiet --branch "$REF" "https://github.com/$REPO.git" "$PREFIX"
-  fi
-}
-
-fetch_tarball() {
-  say "Downloading $REPO ($REF) tarball into $PREFIX …"
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF" -o "$tmp/src.tar.gz" \
-    || curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/tags/$REF" -o "$tmp/src.tar.gz" \
-    || die "could not download $REPO@$REF."
-  tar -xzf "$tmp/src.tar.gz" -C "$tmp"
-  local extracted
-  extracted="$(find "$tmp" -maxdepth 1 -type d -name 'macsimize-*' | head -1)"
-  [ -n "$extracted" ] || die "unexpected tarball layout."
-  rm -rf "$PREFIX"
-  mkdir -p "$(dirname "$PREFIX")"
-  mv "$extracted" "$PREFIX"
-}
-
-if command -v git >/dev/null 2>&1; then
-  fetch_git
-else
-  fetch_tarball
+# --- resolve version ---------------------------------------------------------
+# Default to the latest published release so the one-liner always pulls a real,
+# versioned tarball (not a moving branch). Override with MACSIMIZE_VERSION.
+VERSION="${MACSIMIZE_VERSION:-}"
+if [ -z "$VERSION" ]; then
+  VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
 fi
+[ -n "$VERSION" ] || die "no release found for $REPO. Set MACSIMIZE_VERSION=<tag> to pin one."
 
-[ -f "$PREFIX/bin/macsimize" ] || die "install looks incomplete: $PREFIX/bin/macsimize missing."
+# --- download + unpack -------------------------------------------------------
+say "Installing $REPO $VERSION into $PREFIX …"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL "https://github.com/$REPO/archive/refs/tags/$VERSION.tar.gz" -o "$tmp/src.tar.gz" \
+  || die "could not download $REPO $VERSION."
+tar -xzf "$tmp/src.tar.gz" -C "$tmp"
+src="$(find "$tmp" -maxdepth 1 -type d -name 'macsimize-*' | head -1)"
+[ -n "$src" ] || die "unexpected tarball layout."
+[ -f "$src/bin/macsimize" ] || die "tarball is missing bin/macsimize."
+
+rm -rf "$PREFIX"
+mkdir -p "$(dirname "$PREFIX")"
+mv "$src" "$PREFIX"
 chmod +x "$PREFIX/bin/macsimize" 2>/dev/null || true
-ok "macsimize installed at $PREFIX"
+ok "macsimize $VERSION installed at $PREFIX"
 
 # --- link onto PATH ----------------------------------------------------------
 mkdir -p "$BIN_DIR"
@@ -95,7 +78,6 @@ if $on_path; then
   say "Run: ${B}macsimize setup${X}"
 else
   warn "$BIN_DIR is not on your PATH yet."
-  # Pick the rc file for the current login shell.
   case "${SHELL##*/}" in
     zsh)  rc="$HOME/.zshrc" ;;
     bash) rc="$HOME/.bashrc" ;;
